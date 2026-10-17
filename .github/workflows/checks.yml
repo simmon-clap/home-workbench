@@ -16,9 +16,3 @@ jobs:
         run: python -m compileall -q app tools
       - name: 发布审计（个人标识/凭证/禁止目录）
         run: python tools/release_audit.py --public-set
-      - name: 凭证粗筛
-        run: |
-          set -e
-          ! grep -rnE 'eyJ[A-Za-z0-9_-]{30,}|PRIVATE KEY|password[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']{4,}' \
-              --include='*.py' --include='*.md' --include='*.yml' --include='*.html' --include='*.js' \
-              app tools docs README.md docker-compose.yml
