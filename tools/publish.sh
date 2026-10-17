@@ -12,6 +12,8 @@ BUILD="${SMART_HOME_PUBLIC_BUILD:-/tmp/home-workbench-build}"
 PROXY="${SMART_HOME_PROXY:-http://127.0.0.1:7890}"
 CLASH="${SMART_HOME_CLASH_API:-http://127.0.0.1:9090}"
 MSG="${1:-release: 更新 $(date +%F\ %H:%M)}"
+TAG=""
+for a in "$@"; do case "$a" in --tag) TAG_NEXT=1;; *) if [ "${TAG_NEXT:-0}" = "1" ]; then TAG="$a"; TAG_NEXT=0; fi;; esac; done
 export https_proxy="$PROXY" http_proxy="$PROXY" PATH="$HOME/.local/bin:$PATH"
 
 read_cfg() {  # $1=文件 $2=环境变量名
@@ -80,5 +82,10 @@ git commit -qm "$MSG" || echo "  无改动，跳过提交"
 
 echo "[5/5] 推送"
 git push origin main
-echo "完成：$(git remote get-url origin) · $(git log --oneline -1)"
+if [ -n "$TAG" ]; then
+  git tag -a "$TAG" -m "release $TAG" 2>/dev/null || true
+  git push origin "$TAG" 2>/dev/null || true
+  echo "已打标签：$TAG"
+fi
+echo "完成：$(git remote get-url origin) · $(git log --oneline -1)" 
 rm -rf "$BUILD"
