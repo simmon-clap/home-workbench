@@ -158,3 +158,13 @@ body{
    把空间图藏起来，用等价的房间列表顶上 —— 不是降级提示，而是能用的视图。 */
 body.no-3d .stage{display:none}
 body.no-3d .mlist{display:block}
+
+/* 真实 3D（客厅）：室内扫描几何嵌在房间面板顶部，其他房间不动 */
+.real3d{flex:0 0 auto;margin:2px 0 10px;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  background:color-mix(in srgb,var(--paper) 70%,#fff)}
+.r3h{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;
+  font-size:12px;color:var(--ink2);border-bottom:1px solid var(--line)}
+.r3h a{color:#C0713F;text-decoration:none}
+.r3h a:hover{text-decoration:underline}
+.r3thumb{display:block;text-decoration:none}
+.r3box{display:block;height:230px;background:var(--paper) url('/space/scan-room-thumb.png') center/contain no-repeat}

@@ -36,9 +36,11 @@ def copy_tree(src, dst):
 
 
 def main():
-    if os.path.exists(OUT):
-        if os.listdir(OUT):
-            sys.exit(f'输出目录非空：{OUT}（先删除或换个目录）')
+    force = '--force' in sys.argv
+    if os.path.exists(OUT) and os.listdir(OUT):
+        if not force:
+            sys.exit(f'输出目录非空：{OUT}（加 --force 覆盖，或换个目录）')
+        shutil.rmtree(OUT)
     os.makedirs(OUT, exist_ok=True)
     for d in INCLUDE_DIRS:
         s = os.path.join(ROOT, d)

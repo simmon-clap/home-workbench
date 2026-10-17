@@ -172,6 +172,7 @@ function renderPanel(){
   const list = sortedRoomDevices(SEL.room);
   if (!SEL.device){
     p.innerHTML = `<div class="ph"><span class="tt">${SEL.room}</span><span class="ct">${list.length} 台设备</span></div>
+      ${SEL.room === '客厅' ? `<div class="real3d"><div class="r3h"><span>真实 3D · 客餐厅（扫描）</span><a href="/space/scan-room-model.html" target="_blank">打开可编辑</a></div><a class="r3thumb" href="/space/scan-room-model.html" title="点开可编辑 3D"><div class="r3box" role="img" aria-label="客厅真实 3D 扫描模型"></div></a></div>` : ''}
       <div class="pb">${list.map(d => `
         <div class="di ${d.confidence !== 'online' ? 'off' : ''}" data-dev="${d.name}">
           <span class="ic">${ico(d.type, 20, devColor(d))}</span>

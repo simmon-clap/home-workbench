@@ -1,7 +1,7 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="generated-by" content="app/prototype/scan-room-editor/build.mjs">
 <meta name="generated-src" content="data/3d/rooms/客厅餐厅-20261017.json">
-<meta name="generated-at" content="2026-10-17T16:17:23.861Z">
+<meta name="generated-at" content="2026-10-17T16:38:04.295Z">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>扫描模型 · 客厅餐厅-20261017</title>
 <style>
@@ -160,6 +160,11 @@ button.danger{color:#B4453C;border-color:#E7C8C2}
 .zone-label circle{fill:#C0713F;opacity:.7}
 .zone-label text{fill:#C0713F;font-size:13px;font-weight:700}
 .glass{fill:#EAF1EE;fill-opacity:.85;stroke:#D3E1DB;stroke-width:.8}
+body.embed .panel{display:none}
+body.embed .wrap{grid-template-columns:1fr}
+body.embed .hd .back,body.embed .hd .m,body.embed .hint{display:none}
+body.embed .left{padding:10px}
+body.embed .stage{border-radius:10px;border-color:#EADCC8}
 .dim text{fill:#9C9184;font-family:var(--anatomy-mono);font-size:11px}
 </style></head><body class="iso" data-theme="light">
 <div class="wrap"><div class="left">
@@ -289,6 +294,7 @@ fetch('/api/state').then((r) => r.json()).then((st) => {
 }).catch(() => {});
 // 深链：?select=furn-0 选中某构件；?hover=furn-0 显示悬停高亮（用于截图/分享）
 const q = new URLSearchParams(location.search);
+if (q.get('embed') === '1') document.body.classList.add('embed');
 const pick = q.get('select') || q.get('hover');
 if (pick) {
   const el = svg.querySelector('.piece[data-id="' + CSS.escape(pick) + '"]');

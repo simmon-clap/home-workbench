@@ -257,6 +257,24 @@ const editable = {
   })),
 };
 
+
+/* ---------- 缩略 SVG：房间面板里 <img> 直接用（自带样式，不依赖宿主 CSS） ---------- */
+const thumbCss = `${k.ISO_CSS}
+svg .iso[data-theme="light"]{--anatomy-page:#FDFBF7;--anatomy-card:#FFFDF9;--anatomy-text:#6B6156;--anatomy-strong:#4E463C;--anatomy-muted:#9C9184;
+  --anatomy-paper:#FFFDF9;--anatomy-face:#FBF4E9;--anatomy-top:#FFFDF9;
+  --anatomy-shade-0:#D9C3A3;--anatomy-shade-1:#E2CEB0;--anatomy-shade-2:#EADCC8;--anatomy-shade-3:#F3E9DC;
+  --anatomy-hi:#4E463C;--anatomy-mid:#8A8078;--anatomy-lo:#B9A488;--anatomy-faint:#DDC8AC;--anatomy-lit:#C0713F;
+  --anatomy-halo:#B9A488;--anatomy-halo-opacity:.22;--anatomy-dot:#C0713F}
+svg .glass{fill:#EAF1EE;fill-opacity:.85;stroke:#D3E1DB;stroke-width:.8}
+svg .zone-label circle{fill:#C0713F;opacity:.7}
+svg .zone-label text{fill:#C0713F;font-size:13px;font-weight:700}
+svg .piece[data-kind="tv"] .iso-fill{fill:#7A7164}
+svg .piece[data-kind="tv"] .iso-top{fill:#8A8175}
+svg .piece[data-kind="tv"] .iso-shade{fill:#6E6659}
+svg .piece[data-kind="cabinet"] .iso-top{fill:#F3E6D2}`;
+const thumb = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WIDTH} ${HEIGHT}" width="${WIDTH}" height="${HEIGHT}"><style>${thumbCss}</style><rect width="${WIDTH}" height="${HEIGHT}" fill="#FBF4E9"/><g class="iso" data-theme="light">${body}</g></svg>`;
+fs.writeFileSync(path.join(ROOT, 'app', 'web', 'space', 'scan-room-thumb.svg'), thumb);
+
 const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="generated-by" content="app/prototype/scan-room-editor/build.mjs">
 <meta name="generated-src" content="data/3d/rooms/${NAME}.json">
@@ -312,6 +330,11 @@ button.danger{color:#B4453C;border-color:#E7C8C2}
 .zone-label circle{fill:#C0713F;opacity:.7}
 .zone-label text{fill:#C0713F;font-size:13px;font-weight:700}
 .glass{fill:#EAF1EE;fill-opacity:.85;stroke:#D3E1DB;stroke-width:.8}
+body.embed .panel{display:none}
+body.embed .wrap{grid-template-columns:1fr}
+body.embed .hd .back,body.embed .hd .m,body.embed .hint{display:none}
+body.embed .left{padding:10px}
+body.embed .stage{border-radius:10px;border-color:#EADCC8}
 .dim text{fill:#9C9184;font-family:var(--anatomy-mono);font-size:11px}
 </style></head><body class="iso" data-theme="light">
 <div class="wrap"><div class="left">
@@ -441,6 +464,7 @@ fetch('/api/state').then((r) => r.json()).then((st) => {
 }).catch(() => {});
 // 深链：?select=furn-0 选中某构件；?hover=furn-0 显示悬停高亮（用于截图/分享）
 const q = new URLSearchParams(location.search);
+if (q.get('embed') === '1') document.body.classList.add('embed');
 const pick = q.get('select') || q.get('hover');
 if (pick) {
   const el = svg.querySelector('.piece[data-id="' + CSS.escape(pick) + '"]');
@@ -453,6 +477,7 @@ if (pick) {
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, html);
+console.log(`已生成缩略图 app/web/space/scan-room-thumb.svg（${(thumb.length / 1024).toFixed(1)} KB）`);
 console.log(`已生成 ${path.relative(ROOT, OUT)}（${(html.length / 1024).toFixed(1)} KB · ${pieces.length} 个可选中构件）`);
 
 function escape(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
