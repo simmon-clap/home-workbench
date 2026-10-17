@@ -1,0 +1,6 @@
+# 家庭工作台插件配置
+# 只装在 mini 的 desktop profile；入口指向本机家庭工作台（127.0.0.1:8300）。
+# 依据：docs/spec/10-开发计划-v1.1 §P6（桌面端 DSH 独立插件入口，不发给笔记本那端）
+- insert:
+    - id: family-workbench
+      name: dsh-family-workbench

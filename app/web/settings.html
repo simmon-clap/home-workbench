@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>功能设置 · 家庭工作台</title>
+<meta name="theme-color" content="#FDFBF7">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="page">
+  <div class="hd">
+    <div class="hi">功能设置<small>改映射不改设备 · 改动可回滚 · 不依赖助手在线</small></div>
+  </div>
+  <div id="settingsBox"></div>
+</div>
+<script src="/settings.js"></script>
+
+<script>
+/* P6 多端：离线壳（只在安全上下文注册：tailnet https / 本机 localhost）
+   断网时给一个诚实的“连不上”页，不回放任何旧数据。 */
+if ('serviceWorker' in navigator &&
+    (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>

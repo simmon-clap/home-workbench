@@ -1,0 +1,99 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="generated-by" content="app/prototype/spatial/build_scan.mjs">
+<meta name="generated-src" content="data/floorplan.json">
+<meta name="generated-at" content="2026-10-17T05:08:56.878Z">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>空间视图 · 家庭工作台</title>
+<style>
+:root{--page:#FDFBF7;--face:#FFFDF9;--top:#F6EFE4;--shade1:#EADCC7;--shade2:#E2D5C2;
+      --line:#E2D5C2;--text:#4E463C;--muted:#9C9184;--warm:#C0713F;--alert:#B4453C;--warn:#8A6A1F}
+*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--text);
+  font:14px/1.5 -apple-system,"PingFang SC",sans-serif;padding:20px}
+h1{font-size:15px;font-weight:600;margin:0 0 4px}p.sub{margin:0 0 16px;color:var(--muted);font-size:12px}
+.iso-svg{display:block;width:100%;height:auto}
+.iso-top{fill:var(--top);stroke:var(--line);stroke-width:1}
+.iso-shade[data-shade="1"]{fill:var(--shade1);stroke:var(--line);stroke-width:1}
+.iso-shade[data-shade="2"]{fill:var(--shade2);stroke:var(--line);stroke-width:1}
+.iso-fill{fill:var(--face)}
+.iso-dot{fill:var(--warm);opacity:.55}
+.iso-solid.warn .iso-top{fill:#FCF6EA;stroke:var(--warn);stroke-width:2}
+.iso-solid.sec .iso-top{fill:#FDF0EC;stroke:var(--alert);stroke-width:2}
+.lb{font-size:12px;fill:var(--muted)}
+.lb b{fill:var(--text)}
+ul.rooms{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+ul.rooms li{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--face)}
+ul.rooms li .nm{font-weight:600}ul.rooms li .st{font-size:12px;color:var(--muted)}
+ul.rooms li.flag{border-color:var(--alert)}ul.rooms li.flag .st{color:var(--alert)}
+.note{margin-top:14px;font-size:12px;color:var(--muted)}
+</style></head><body>
+<h1>空间视图</h1>
+<p class="sub">扫描几何：5 个分区（来源：米家 App 分区图截图（扫地机建图输出））· 抬起高度仅用于区分房间，不是真实结构</p>
+<svg class="iso-svg" viewBox="-839 12 1668 885" xmlns="http://www.w3.org/2000/svg">
+<g class="iso-solid" data-room="房间1" data-kind="teal2">
+  <polygon class="iso-fill" points="408.5,235.8 532.2,307.3 369.8,401.0 246.1,329.6"/>
+  <polygon class="iso-shade" data-shade="1" points="532.2,217.3 369.8,311.0 369.8,401.0 532.2,307.3"/>
+  <polygon class="iso-shade" data-shade="2" points="246.1,239.6 369.8,311.0 369.8,401.0 246.1,329.6"/>
+  <polygon class="iso-top" points="408.5,145.8 532.2,217.3 369.8,311.0 246.1,239.6"/>
+  <circle class="iso-dot" cx="389.1" cy="228.4" r="7"/>
+</g>
+<g class="iso-solid" data-room="客厅" data-kind="teal2">
+  <polygon class="iso-fill" points="-281.4,162.5 256.1,472.9 -241.9,760.4 -779.4,450.0"/>
+  <polygon class="iso-shade" data-shade="1" points="256.1,382.9 -241.9,670.4 -241.9,760.4 256.1,472.9"/>
+  <polygon class="iso-shade" data-shade="2" points="-779.4,360.0 -241.9,670.4 -241.9,760.4 -779.4,450.0"/>
+  <polygon class="iso-top" points="-281.4,72.5 256.1,382.9 -241.9,670.4 -779.4,360.0"/>
+  <circle class="iso-dot" cx="-261.7" cy="371.4" r="7"/>
+</g>
+<g class="iso-solid" data-room="房间8" data-kind="olive">
+  <polygon class="iso-fill" points="397.7,242.1 768.6,456.3 108.3,837.5 -262.7,623.3"/>
+  <polygon class="iso-shade" data-shade="1" points="768.6,366.3 108.3,747.5 108.3,837.5 768.6,456.3"/>
+  <polygon class="iso-shade" data-shade="2" points="-262.7,533.3 108.3,747.5 108.3,837.5 -262.7,623.3"/>
+  <polygon class="iso-top" points="397.7,152.1 768.6,366.3 108.3,747.5 -262.7,533.3"/>
+  <circle class="iso-dot" cx="253.0" cy="449.8" r="7"/>
+</g>
+<g class="iso-solid" data-room="房间2" data-kind="olive">
+  <polygon class="iso-fill" points="-535.9,315.6 -476.7,349.7 -671.6,462.3 -730.8,428.1"/>
+  <polygon class="iso-shade" data-shade="1" points="-476.7,259.7 -671.6,372.3 -671.6,462.3 -476.7,349.7"/>
+  <polygon class="iso-shade" data-shade="2" points="-730.8,338.1 -671.6,372.3 -671.6,462.3 -730.8,428.1"/>
+  <polygon class="iso-top" points="-535.9,225.6 -476.7,259.7 -671.6,372.3 -730.8,338.1"/>
+  <circle class="iso-dot" cx="-603.7" cy="298.9" r="7"/>
+</g>
+<g class="iso-solid" data-room="房间8-2" data-kind="orange">
+  <polygon class="iso-fill" points="185.8,507.2 374.0,615.9 49.2,803.4 -139.0,694.8"/>
+  <polygon class="iso-shade" data-shade="1" points="374.0,525.9 49.2,713.4 49.2,803.4 374.0,615.9"/>
+  <polygon class="iso-shade" data-shade="2" points="-139.0,604.8 49.2,713.4 49.2,803.4 -139.0,694.8"/>
+  <polygon class="iso-top" points="185.8,417.2 374.0,525.9 49.2,713.4 -139.0,604.8"/>
+  <circle class="iso-dot" cx="117.5" cy="565.3" r="7"/>
+</g>
+<text class="lb" x="389" y="212" text-anchor="middle"><tspan font-weight="600">房间1</tspan></text>
+<text class="lb" x="-262" y="355" text-anchor="middle"><tspan font-weight="600">客厅</tspan></text>
+<text class="lb" x="253" y="434" text-anchor="middle"><tspan font-weight="600">房间8</tspan></text>
+<text class="lb" x="-604" y="283" text-anchor="middle"><tspan font-weight="600">房间2</tspan></text>
+<text class="lb" x="117" y="549" text-anchor="middle"><tspan font-weight="600">房间8-2</tspan></text>
+</svg>
+<ul class="rooms" id="rooms"><li data-room="房间1"><div class="nm">房间1</div><div class="st">—</div></li><li data-room="客厅"><div class="nm">客厅</div><div class="st">—</div></li><li data-room="房间8"><div class="nm">房间8</div><div class="st">—</div></li><li data-room="房间2"><div class="nm">房间2</div><div class="st">—</div></li><li data-room="房间8-2"><div class="nm">房间8-2</div><div class="st">—</div></li></ul>
+<p class="note" id="note">正在读取实时状态…</p>
+<script>
+/* 运行时只读 /api/state：房间异常整块标色 + 列表同步（页面是生成物，状态是实时的） */
+(async () => {
+  const note = document.getElementById('note');
+  try {
+    const st = await (await fetch('/api/state')).json();
+    const byRoom = new Map((st.rooms || []).map(r => [r.name, r]));
+    let matched = 0;
+    for (const li of document.querySelectorAll('#rooms li')) {
+      const r = byRoom.get(li.dataset.room);
+      const g = document.querySelector('.iso-solid[data-room="' + CSS.escape(li.dataset.room) + '"]');
+      if (!r) { li.querySelector('.st').textContent = '未接入设备'; continue; }
+      matched++;
+      const off = r.offline || 0;
+      li.querySelector('.st').textContent = off ? off + ' 台异常 / 共 ' + r.total + ' 台' : r.total + ' 台 · 正常';
+      if (off) { li.classList.add('flag'); if (g) g.classList.add('sec'); }
+      else if (r.total && g) g.classList.add('warn');
+    }
+    note.textContent = '实时状态已接入（' + matched + '/' + byRoom.size + ' 个分区匹配到房间）· 数据来自 /api/state';
+  } catch (e) {
+    note.textContent = '实时状态暂时读不到，上面显示的是扫描几何（不是设备状态）';
+  }
+})();
+</script>
+</body></html>

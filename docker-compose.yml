@@ -1,0 +1,29 @@
+# 智能家居中枢 —— 可整体迁移：换机器只要搬这个目录
+#
+# 迁移方式：整个 ~/smart-home 拷到新机器 → docker compose up -d → 完事
+# 目标形态不是这个：目标形态是 Home Assistant OS + UTM 虚拟机（见 docs/spec/05-技术架构规范-v1.0.md）
+# 本文件是**过渡期容器方案**，用来验证小米官方集成能不能把 58 台设备接进来。
+#
+# 2026-10-16 记录（过渡期与目标形态的三处刻意差异，不是写错）：
+#   1. 不用 network_mode: host —— colima 是 Linux 虚拟机，"host 网络"等于 VM 内网，Mac 侧访问不到。
+#      过渡期改用端口映射 8123；HA OS 形态下会用真正的 host 网络（mDNS/SSDP 设备发现需要）。
+#   2. 不挂载 /run/dbus —— 那是 Mac 侧路径，VM 内的 dbus 由 VM 自己提供。
+#   3. 显式指定 DNS —— colima 虚拟机里没有 /etc/resolv.conf，容器 DNS 全部解析失败
+#      （实测：account.xiaomi.com 等一律 NXDOMAIN），会让小米 OAuth 直接失败。
+#      过渡期在容器层面直接指定国内公共 DNS；HA OS 形态下由系统自带解析配置。
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    privileged: true          # 过渡期保留；HA OS 形态下这些能力由 Supervisor 负责
+    dns:
+      - 223.5.5.5             # AliDNS
+      - 119.29.29.29          # DNSPod
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "8123:8123"

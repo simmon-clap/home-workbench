@@ -1,0 +1,30 @@
+{
+  "name": "dsh-family-workbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "家庭工作台：DSH 侧边栏独立入口（只装 mini）",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./package.json": "./package.json",
+    "./client": "./client/client.js"
+  },
+  "files": [
+    "src",
+    "client",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer"
+      ],
+      "platform": "web"
+    }
+  }
+}

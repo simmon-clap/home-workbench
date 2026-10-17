@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>连不上 · 家庭工作台</title>
+<style>
+  :root{--page:#FDFBF7;--face:#FFFDF9;--line:#E2D5C2;--text:#4E463C;--muted:#9C9184;--warm:#C0713F}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:var(--page);color:var(--text);padding:24px;
+       font:15px/1.65 -apple-system,"PingFang SC",sans-serif}
+  .card{max-width:420px;width:100%;background:var(--face);border:1px solid var(--line);
+        border-radius:16px;padding:28px 26px}
+  h1{font-size:17px;font-weight:600;margin:0 0 10px}
+  p{margin:0 0 12px;color:var(--muted);font-size:13.5px}
+  b{color:var(--text);font-weight:600}
+  button{margin-top:6px;width:100%;padding:11px 14px;border:1px solid var(--line);border-radius:10px;
+         background:#F6EEE3;color:var(--warm);font-size:14px;font-weight:600;cursor:pointer}
+  .note{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>现在连不上家里的中枢</h1>
+  <p>这个页面是<b>离线壳</b>：只告诉你「连不上」，<b>不显示任何家庭状态</b>。</p>
+  <p>这里不会给你看缓存的旧读数——旧的读数看起来像现在，那是骗人的。</p>
+  <button onclick="location.reload()">重新连接</button>
+  <div class="note">
+    回家连上 Wi‑Fi（或在外面打开 Tailscale）后再试。<br>
+    数据全部从家里实时取，中枢（HA）正常时这里不会出现。
+  </div>
+</div>
+</body>
+</html>

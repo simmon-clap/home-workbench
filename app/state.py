@@ -1,0 +1,562 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+L2 状态与语义层 · 状态真相生成器
+
+依据：docs/spec/07-数据与记忆规范 v1.0 §1（状态三要素）· 06 §3（离线口径）· 00 宪章第三条
+
+做什么：
+  从 HA 的设备/实体注册表 + recorder 数据库（只读副本）生成
+    data/state.json            —— 每条状态都带 来源 / 可信度 / 时间
+    data/security-domain.json  —— 安全域清单（唯一来源，人工可改）
+
+不做：不写 HA、不改任何设备、不联网。
+用法：python3 app/state.py
+"""
+import datetime
+import json
+import os
+import re
+import shutil
+import sqlite3
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import ha_paths as _hp                                    # 配置目录的唯一来源（迁移时只改环境变量）
+HA = _hp.ha_config_dir()
+STORAGE = os.path.join(HA, '.storage')
+DATA = os.path.join(ROOT, 'data')
+TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import settings as _settings  # noqa: E402  只读「功能设置」的覆盖表（改映射，不改设备本身）
+
+ROOMS = ['客厅', '主卧', '厨房', '餐厅', '次卧', '客卫', '主卫', '书房', '阳台', '办公室']
+def _family_prefixes():
+    """家庭名前缀（本机私有配置，不进仓库）：~/.config/smart-home/family-prefix 每行一个。"""
+    cfg = os.path.expanduser('~/.config/smart-home/family-prefix')
+    try:
+        # 保留行尾空格：米家的家庭名前缀就带一个空格（去掉会留下前导空格）
+        lines = open(cfg, encoding='utf-8').read().splitlines()
+        return tuple(l for l in lines if l)
+    except OSError:
+        return ('',)
+
+
+FAMILY_PREFIXES = _family_prefixes()
+HA_HELPERS = {'Sun', 'Backup', '谷歌翻译 en com', 'Forecast'}
+
+# 离线阈值（06 §3：Wi-Fi/市电 10 分钟 · 电池 12 小时 · 摄像头 5 分钟）
+TH_WIFI, TH_BATTERY, TH_CAMERA = 600, 43200, 300
+
+# 安全域判定：名称关键词 + 实体域（08 §2）
+SEC_NAME = re.compile(r'门锁|摄像|可视门铃|燃气|天然气|水浸|烟感|烟雾|报警')
+SEC_DOMAINS = {'lock', 'camera'}
+SEC_DEVICES_SEED = [
+    '小米全自动智能门锁 Pro',
+    '小白智能摄像机 云台版Y2',
+    '小白智能摄像机 云台版Y2 2',
+    '小米天然气卫士',
+    '小米水浸卫士',
+    '小米烟感卫士',
+]
+
+READING_CLASSES = {
+    'battery': '电量', 'temperature': '温度', 'humidity': '湿度', 'illuminance': '光照',
+    'power': '功率', 'energy': '用电量', 'voltage': '电压', 'current': '电流',
+    'carbon_dioxide': 'CO₂', 'pm25': 'PM2.5', 'signal_strength': '信号',
+}
+KEEP_DOMAINS = {'light', 'switch', 'lock', 'cover', 'climate', 'camera', 'vacuum',
+                'media_player', 'fan', 'humidifier', 'binary_sensor', 'sensor', 'event'}
+STATE_TEXT = {
+    'on': '开', 'off': '关', 'open': '开', 'opening': '正在开', 'closed': '关', 'closing': '正在关',
+    'locked': '已上锁', 'unlocked': '已开锁', 'unavailable': '不可用', 'unknown': '未知',
+    'idle': '待机', 'docked': '已回充', 'cleaning': '清扫中', 'returning': '返回中',
+    'detected': '触发', 'clear': '正常', 'wet': '有水', 'dry': '干燥',
+}
+
+
+def load(path, default=None):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:  # noqa
+        return default
+
+
+def room_of(area_id, areas):
+    name = areas.get(area_id)
+    if not name:
+        return '未分配'
+    for p in FAMILY_PREFIXES:
+        if name.startswith(p):
+            return name[len(p):]
+    return name
+
+
+# 数据来源：'auto'（API 优先、文件兜底）· 'api'（只用官方 API）· 'files'（只读文件）
+# 为什么要有开关：迁到 HA OS 后 HA 的文件在虚拟机里、Mac 读不到，只能走官方 API。
+# 2026-10-17 实测：WS 注册表（实体/设备/区域）+ REST /api/states 能提供同样的数据。
+STATE_SOURCE = os.environ.get('SMART_HOME_STATE_SOURCE', 'auto')
+SOURCE_USED = {'registries': None, 'states': None}
+
+
+def read_registries_api():
+    """走官方 WebSocket API 取三张注册表，包装成与文件相同的形状（build() 不用改）。"""
+    import ha_ws
+    r = ha_ws.fetch_registries()
+    # **字段名要对齐**：WS 的区域条目用的是 `area_id`，而文件里是 `id`（2026-10-17 实测，
+    # 不映射就会在 build() 里 KeyError: 'id'）。设备/实体两张表的字段名一致，保持原样。
+    areas = [dict(a, id=a.get('id') or a.get('area_id')) for a in r['areas']]
+    return ({'data': {'devices': r['devices']}},
+            {'data': {'entities': r['entities']}},
+            {'data': {'areas': areas}})
+
+
+def read_states_api():
+    """走 REST 取当前状态，产出与 read_states() 相同形状的字典。
+
+    last_good_ts（最后一次有效读数）只有设备当前不正常时才需要回溯，所以只对那几台查历史。
+    """
+    import urllib.request
+    import ha
+    req = urllib.request.Request(ha.BASE + '/api/states')
+    req.add_header('Authorization', 'Bearer ' + ha.load_token())
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        rows = json.load(resp)
+
+    def epoch(iso_s):
+        try:
+            return datetime.datetime.fromisoformat(iso_s.replace('Z', '+00:00')).timestamp()
+        except (TypeError, ValueError):
+            return None
+
+    out, need_history = {}, []
+    for row in rows:
+        eid = row['entity_id']
+        ts = epoch(row.get('last_updated'))
+        st = row.get('state')
+        out[eid] = {'state': st, 'ts': ts, 'reported': epoch(row.get('last_reported')),
+                    'attrs': row.get('attributes') or {}, 'last_good_ts': None}
+        if st in ('unavailable', 'unknown', ''):
+            need_history.append(eid)          # 只对不正常的实体回溯"最后一次有效读数"
+        else:
+            out[eid]['last_good_ts'] = ts
+    for eid in need_history[:200]:            # 有上限，避免极端情况下打爆 HA
+        try:
+            start = (datetime.datetime.now(datetime.timezone.utc)
+                     - datetime.timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S')
+            url = f'{ha.BASE}/api/history/period/{start}?filter_entity_id={eid}&minimal_response'
+            req2 = urllib.request.Request(url)
+            req2.add_header('Authorization', 'Bearer ' + ha.load_token())
+            with urllib.request.urlopen(req2, timeout=20) as resp2:
+                hist = json.load(resp2)
+            seq = (hist[0] if hist else []) or []
+            good = [h for h in seq if h.get('s') not in ('unavailable', 'unknown', '')]
+            if good:
+                out[eid]['last_good_ts'] = epoch(good[-1].get('lu') or good[-1].get('last_updated'))
+        except Exception:  # noqa
+            pass                              # 回溯失败就留空：宁可说"没有有效读数"，不编
+    return out
+
+
+def read_states():
+    """把 recorder 库复制成只读副本再查（避免 WAL 下的并发问题）。"""
+    src = os.path.join(HA, 'home-assistant_v2.db')
+    if not os.path.exists(src):
+        return {}
+    tmp = tempfile.mkdtemp(prefix='ha-state-')
+    try:
+        for suffix in ('', '-wal', '-shm'):
+            if os.path.exists(src + suffix):
+                shutil.copy(src + suffix, os.path.join(tmp, 'ha.db' + suffix))
+        con = sqlite3.connect(os.path.join(tmp, 'ha.db'))
+        attrs = {aid: txt for aid, txt in con.execute('select attributes_id, shared_attrs from state_attributes')}
+        out = {}
+        sql = ("select sm.entity_id, s.state, max(s.last_updated_ts), s.attributes_id "
+               "from states s join states_meta sm on s.metadata_id = sm.metadata_id "
+               "group by sm.metadata_id")
+        for eid, state, ts, aid, rep in con.execute(
+                "select sm.entity_id, s.state, max(s.last_updated_ts), s.attributes_id, s.last_reported_ts "
+                "from states s join states_meta sm on s.metadata_id = sm.metadata_id group by sm.metadata_id"):
+            a = json.loads(attrs.get(aid) or '{}')
+            out[eid] = {'state': state, 'ts': ts, 'reported': rep, 'attrs': a, 'last_good_ts': None}
+        # 每条实体的「最后一次有效读数」：状态不是 unavailable/unknown 的最大时间
+        sql2 = ("select sm.entity_id, max(s.last_updated_ts) from states s "
+                "join states_meta sm on s.metadata_id = sm.metadata_id "
+                "where s.state not in ('unavailable','unknown','') group by sm.metadata_id")
+        for eid, ts in con.execute(sql2):
+            if eid in out:
+                out[eid]['last_good_ts'] = ts
+        con.close()
+        return out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def classify_type(domains, name='', entities=None):
+    """设备类型判定：**名称语义优先**，再按实体域兜底。
+
+    为什么不是只看实体域：摄像头等设备会带 `*_indicator_light` 实体，
+    只看域集合会把摄像头误判成"灯"，进而被"全屋关灯"场景选中（2026-10-16 实测过的坑）。
+    """
+    ents = entities or []
+    name = name or ''
+    # 1) 名称语义（安全设备必须优先，避免被当成灯/开关）
+    if re.search(r'门锁|智能锁', name): return 'lock'
+    if re.search(r'摄像|监控|门铃', name): return 'camera'
+    if re.search(r'烟感|燃气|天然气|水浸|报警|门窗传感器|人体传感器|温湿度|空气检测|空气质量|体脂', name): return 'sensor'
+    if re.search(r'扫地|扫拖|吸尘', name): return 'vacuum'
+    if re.search(r'窗帘|晾衣架|卷帘', name): return 'cover'
+    if re.search(r'空调|新风|净化器|加湿|除湿|取暖', name): return 'ac'
+    if re.search(r'电视|投影', name): return 'tv'
+    if re.search(r'音箱|小爱|家庭屏', name): return 'speaker'
+    if re.search(r'插座|开关|断路器', name): return 'plug'
+    if re.search(r'灯|吸顶|筒射|灯带|台灯|氛围', name): return 'light'
+    # 2) 实体域兜底（排除指示灯的干扰：只有 indicator_light 不算灯）
+    real = [e for e in ents if not e.endswith('indicator_light')] or ents
+    doms = {e.split('.')[0] for e in real}
+    for d, t in (('lock', 'lock'), ('camera', 'camera'), ('vacuum', 'vacuum'), ('cover', 'cover'),
+                 ('climate', 'ac'), ('media_player', 'tv'), ('light', 'light'), ('switch', 'plug')):
+        if d in doms:
+            return t
+    if 'binary_sensor' in {e.split('.')[0] for e in ents} or 'sensor' in {e.split('.')[0] for e in ents}:
+        return 'sensor'
+    return 'other'
+
+
+def _apply_override(dev):
+    """应用「功能设置」对这台设备的改动（03 §1D）：只改映射，不改设备本身、不改米家原名。"""
+    try:
+        ov = (_settings.doc().get('overrides') or {}).get(dev['name']) or {}
+    except Exception:  # noqa
+        return
+    if ov.get('room'):
+        dev['room'] = ov['room']
+        dev['room_source'] = 'override'
+    if ov.get('short_name'):
+        dev['short_name'] = ov['short_name']
+    if ov.get('tags'):
+        dev['tags'] = ov['tags']
+    if ov.get('offline_threshold_s'):
+        dev['offline_threshold_s'] = ov['offline_threshold_s']
+
+
+def _add_manual_devices(devices):
+    """手动录入的设备（未接入 HA）：如实标注，只作位置占位，不给任何控制。"""
+    try:
+        manual = _settings.doc().get('devices') or []
+    except Exception:  # noqa
+        return
+    have = {d['name'] for d in devices}
+    for m in manual:
+        if m.get('name') in have:
+            continue
+        devices.append({'name': m['name'], 'short_name': m.get('short_name') or m['name'][:8],
+                        'room': m.get('room'), 'room_source': 'manual', 'type': 'other',
+                        'security_domain': False, 'tags': ['manual'], 'state': '未接入',
+                        'confidence': 'unknown', 'source': '手动录入', 'entity_id': None,
+                        'entities': [], 'readings': [], 'observed_at': None, 'status_at': None,
+                        'age_seconds': None,
+                        'observed_note': '手动录入（未接入 HA）：只表示这里有这样一台设备，不能控制',
+                        'record_age_s': None, 'offline_threshold_s': 43200})
+
+
+def build():
+    use_api = STATE_SOURCE in ('auto', 'api')
+    if use_api:
+        try:
+            dev_reg, ent_reg, area_reg = read_registries_api()
+            SOURCE_USED['registries'] = 'api'
+        except Exception as err:  # noqa
+            if STATE_SOURCE == 'api':
+                raise
+            SOURCE_USED['registries'] = f'files（API 不可用：{str(err)[:60]}）'
+            use_api = False
+    if not use_api:
+        dev_reg = load(os.path.join(STORAGE, 'core.device_registry'), {})
+        ent_reg = load(os.path.join(STORAGE, 'core.entity_registry'), {})
+        area_reg = load(os.path.join(STORAGE, 'core.area_registry'), {})
+        SOURCE_USED['registries'] = SOURCE_USED['registries'] or 'files'
+    devices = (dev_reg.get('data') or {}).get('devices', [])
+    entities = (ent_reg.get('data') or {}).get('entities', [])
+    areas = {a['id']: a['name'] for a in (area_reg.get('data') or {}).get('areas', [])}
+    states = None
+    if STATE_SOURCE in ('auto', 'api'):
+        try:
+            states = read_states_api()
+            SOURCE_USED['states'] = 'api'
+        except Exception as err:  # noqa
+            if STATE_SOURCE == 'api':
+                raise
+            SOURCE_USED['states'] = f'files（API 不可用：{str(err)[:60]}）'
+    if states is None:
+        states = read_states()
+        SOURCE_USED['states'] = SOURCE_USED['states'] or 'files'
+
+    ent_by_dev = {}
+    for e in entities:
+        ent_by_dev.setdefault(e.get('device_id'), []).append(e['entity_id'])
+
+    sec_list = load(os.path.join(DATA, 'security-domain.json'), {}) or {}
+    sec_names = set(sec_list.get('devices') or SEC_DEVICES_SEED)
+
+    out_devices, attention, platform_devices = [], [], []
+    now = datetime.datetime.now(TZ)
+    for d in devices:
+        name = d.get('name') or ''
+        if name in HA_HELPERS:
+            continue
+        # 平台设备（HA 自身）：迁移到 HA OS 后注册表里多出 Core/Host/OS/Supervisor
+        # 以及 HomeKit 桥（manufacturer 都是 "Home Assistant"）。它们**不是米家设备**，
+        # 若混进台账会让"设备数/房间/改名"三类校验全部对不上（2026-10-17 迁移时实测）。
+        # 处理方式：挑出来单独记（platform_devices），不参与米家台账，也不丢——如实呈现。
+        if (d.get('manufacturer') or '') == 'Home Assistant':
+            platform_devices.append({
+                'name': name, 'model': d.get('model') or '', 'entry_type': d.get('entry_type'),
+                'entity_count': len(ent_by_dev.get(d['id'], [])),
+                'area_id': d.get('area_id'), 'id': d.get('id'),
+                'note': '平台设备（HA 自带），不是米家设备，不参与家庭台账',
+            })
+            continue
+        # 个人移动端（HA App 注册进来的手机/手表）：不是家里的设备，不参与米家台账。
+        # 2026-10-17 实测：手机登录 HA App 后注册表会多出一台个人手机设备，
+        # 混进台账会让 D01/D02/D03/Q20/Q50 全部对不上（和当年 Core/Host/OS 一样的问题）。
+        if any((ident or [None])[0] == 'mobile_app' for ident in (d.get('identifiers') or [])):
+            platform_devices.append({
+                'name': name, 'model': d.get('model') or '', 'entry_type': d.get('entry_type'),
+                'entity_count': len(ent_by_dev.get(d['id'], [])),
+                'area_id': d.get('area_id'), 'id': d.get('id'),
+                'note': '个人移动端（HA App），不是米家设备，不参与家庭台账',
+            })
+            continue
+        ents = ent_by_dev.get(d['id'], [])
+        domains = {e.split('.')[0] for e in ents}
+        rooms_states = [(e, states[e]) for e in ents if e in states]
+        unavailable = [e for e, s in rooms_states if s['state'] == 'unavailable']
+        known = [(e, s) for e, s in rooms_states if s['state'] not in ('unavailable', '')]
+        observed = max((s['last_good_ts'] for _, s in rooms_states if s.get('last_good_ts')), default=None)
+        observed_dt = datetime.datetime.fromtimestamp(observed, TZ) if observed else None
+        age = (now - observed_dt).total_seconds() if observed_dt else None
+        state_changed = max((s['ts'] for _, s in rooms_states), default=None)
+
+        # 离线阈值
+        has_batt = any(s['attrs'].get('device_class') == 'battery' for _, s in rooms_states)
+        if 'camera' in domains:
+            th = TH_CAMERA
+        elif has_batt:
+            th = TH_BATTERY
+        else:
+            th = TH_WIFI
+        # 记录龄：距最近一条记录多久（用于校准上报节奏，不直接当成离线）
+        last_rec = max((s.get('reported') or s['ts'] for _, s in rooms_states), default=None)
+        rec_age = (now.timestamp() - last_rec) if last_rec else None
+        # 离线只认硬证据：HA 标记 unavailable。阈值判定暂不可用——实测 recorder 只在状态
+        # 变化时写行，稳定设备 50+ 分钟无新行属正常（2026-10-16 实测：按 600s 阈值会产出 37 台假离线）。
+        STALE_HARD = 43200        # 12 小时内没有任何记录才算异常（保守，先不冤枉正常设备）
+        if not rooms_states:
+            confidence, state_txt = 'unknown', '未上报'
+        elif len(unavailable) == len(rooms_states):
+            confidence, state_txt = 'offline', '离线'
+        elif observed is None:
+            confidence, state_txt = 'unknown', '无有效读数'
+        elif rec_age is not None and rec_age > STALE_HARD:
+            confidence, state_txt = 'stale', f'{int(rec_age // 3600)} 小时无新记录'
+        else:
+            confidence, state_txt = 'online', '在线'
+
+        is_sec = bool(SEC_NAME.search(name)) or bool(domains & SEC_DOMAINS) or name in sec_names
+        # 可读数据
+        readings = []
+        maint = []                       # 耗材剩余（滤网/主刷/边刷…）：米家会显示，我们也得有
+        for e, s in sorted(rooms_states):
+            obj = e.split('.', 1)[-1]
+            # 设备自报的状态码（如扫地机 fault）：规格里没有码表 → **只呈现不解释、不告警**
+            if ('_fault' in obj or obj.endswith('fault')) and s['state'] not in ('unknown', 'unavailable', ''):
+                maint.append({'entity_id': e, 'label': '自报状态码', 'value': s['state'], 'unit': '',
+                              'observed_at': iso(s['ts']), 'kind': 'raw_code',
+                              'note': '规格里没有码表，含义未知；米家里可看详情'})
+                continue
+            if 'left_time' in obj and s['state'] not in ('unknown', 'unavailable', ''):
+                fn = s['attrs'].get('friendly_name', obj)
+                toks = [t for t in fn.replace(name, ' ').replace('*', ' ').split() if t]
+                # 名字形如「米家全能扫拖机器人 滤芯 滤芯剩余时间」→ 取第一段作为耗材名
+                lbl = toks[0] if toks else obj
+                lbl = lbl.replace('剩余时间', '').replace('剩余', '').strip() or obj
+                maint.append({'entity_id': e, 'label': lbl, 'value': s['state'],
+                              'unit': s['attrs'].get('unit_of_measurement', 'h'),
+                              'observed_at': iso(s['ts']), 'kind': 'consumable'})
+                continue          # 耗材已归入 maint，别再从通用传感器路径重复加一遍
+            dom = e.split('.')[0]
+            if dom not in KEEP_DOMAINS:
+                continue
+            dc = s['attrs'].get('device_class')
+            unit = s['attrs'].get('unit_of_measurement', '')
+            label = READING_CLASSES.get(dc)
+            if label is None:
+                if dom in ('light', 'switch'):
+                    label, val = '开关', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'lock':
+                    label, val = '门状态', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'cover':
+                    label, val = '开合', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'climate':
+                    label, val = '模式', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'camera':
+                    label, val = '画面', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'vacuum':
+                    label, val = '状态', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'binary_sensor':
+                    label, val = dc or '传感', STATE_TEXT.get(s['state'], s['state'])
+                elif dom == 'sensor':
+                    label, val = (s['attrs'].get('friendly_name', '').split(' ')[-2:] or ['读数'])[-1], s['state']
+                else:
+                    continue
+                readings.append({'entity_id': e, 'label': label, 'value': val, 'unit': unit,
+                                 'observed_at': iso(s['ts'])})
+            else:
+                val = s['state']
+                if val not in ('unknown', 'unavailable'):
+                    readings.append({'entity_id': e, 'label': label, 'value': val, 'unit': unit,
+                                     'observed_at': iso(s['ts'])})
+        # 去重 & 上限（**先合并 maint 再统一去重**：之前的去重只覆盖通用路径，耗材/状态码会重复）
+        seen_ent, seen_lv, uniq = set(), set(), []
+        for r in maint + readings:
+            k_ent = r['entity_id']                     # 同一实体可能走两条路径
+            k_lv = (r['label'], str(r['value']))       # 不同实体但同标签同值（如 fault 与 faults）也算重复
+            if k_ent in seen_ent or k_lv in seen_lv:
+                continue
+            seen_ent.add(k_ent)
+            seen_lv.add(k_lv)
+            uniq.append(r)
+        readings = uniq[:6]
+
+        dev = {
+            'name': name, 'room': room_of(d.get('area_id'), areas),
+            'type': classify_type(domains, name, ents),
+            'manufacturer': d.get('manufacturer') or '', 'model': d.get('model') or '',
+            'security_domain': is_sec, 'entity_id': ents[0] if ents else None,
+            'entities': ents, 'entity_count': len(ents),
+            'state': state_txt, 'confidence': confidence,
+            'source': '米家云 · xiaomi_home',
+            'observed_at': iso(observed), 'status_at': iso(state_changed),
+            'record_age_s': int(rec_age) if rec_age is not None else None,
+            'staleness_note': '阈值判定待校准（recorder 仅在状态变化时写行）',
+            'age_seconds': int(age) if age is not None else None,
+            'observed_note': ('接入后未收到过有效读数' if observed is None
+                              else f"最后一次有效读数 {observed_dt.strftime('%m-%d %H:%M')}"),
+            'offline_threshold_s': th, 'readings': readings,
+            'room_source': 'miyun',        # 来源显式：房间是米家的还是本地改的（03 §1D）
+        }
+        _apply_override(dev)          # 先应用「功能设置」的改动，房间/标签才会影响分组与待注意项
+        out_devices.append(dev)
+
+        # 需要你注意
+        batt = next((r for r in readings if r['label'] == '电量' and str(r['value']).isdigit()), None)
+        if confidence in ('offline', 'stale') and not is_sec:
+            attention.append({'level': 'warn', 'kind': 'offline', 'room': dev['room'], 'device': name,
+                              'issue': f"{'离线' if confidence == 'offline' else '超时未上报'}",
+                              'detail': (f"最后一次有效读数 {observed_dt.strftime('%m-%d %H:%M')}"
+                                         if observed_dt else '接入后未收到过有效读数'),
+                              'suggestion': '检查电源/网络后我再试一次'})
+        if confidence == 'unknown':
+            attention.append({'level': 'warn', 'kind': 'unknown', 'room': dev['room'], 'device': name,
+                              'issue': '从未上报', 'detail': '接入后没有任何读数', 'suggestion': '现场确认设备是否通电'})
+        if is_sec and confidence in ('offline', 'stale'):
+            attention.append({'level': 'sec', 'kind': 'security_offline', 'room': dev['room'], 'device': name,
+                              'issue': f"安全设备{'离线' if confidence == 'offline' else '超时'}",
+                              'detail': (f"最后一次有效读数 {observed_dt.strftime('%m-%d %H:%M')}"
+                                         if observed_dt else '接入后未收到过有效读数'),
+                              'suggestion': '现场确认阀门/指示灯；需要我记一条待办吗'})
+        for m in maint:
+            if m.get('kind') != 'consumable':      # 自报状态码不是耗材，绝不能按"剩余小时"告警（实测漏过）
+                continue
+            try:
+                hours = float(m['value'])
+            except (TypeError, ValueError):
+                continue
+            if hours <= 24:
+                attention.append({'level': 'warn', 'kind': 'consumable', 'room': dev['room'], 'device': name,
+                                  'issue': f"{m['label']}剩余 {int(hours)} 小时",
+                                  'detail': '该换耗材了（米家里也要翻菜单才看得到）',
+                                  'suggestion': '换好后我确认一次'})
+
+        if batt and int(batt['value']) <= 20:
+            lvl = 'sec' if is_sec else 'warn'
+            attention.append({'level': lvl, 'kind': 'low_battery', 'room': dev['room'], 'device': name,
+                              'issue': f"电量 {batt['value']}%", 'detail': '该换电池了', 'suggestion': '换电池'})
+
+    _add_manual_devices(out_devices)
+
+    order = {'sec': 0, 'warn': 1, 'info': 2}
+    attention.sort(key=lambda a: (order.get(a['level'], 9), a['room'], a['device']))
+
+    by_room = {}
+    for d in out_devices:
+        r = by_room.setdefault(d['room'], {'name': d['room'], 'total': 0, 'offline': 0, 'security': 0, 'devices': []})
+        r['total'] += 1
+        r['offline'] += 1 if d['confidence'] in ('offline', 'stale', 'unknown') else 0
+        r['security'] += 1 if d['security_domain'] else 0
+        r['devices'].append(d['name'])
+    sec_n = sum(1 for a in attention if a['level'] == 'sec')
+    if sec_n:
+        headline = f'有 {sec_n} 件安全的事想让你看一眼'
+    elif attention:
+        headline = f'有 {len(attention)} 件事想让你看一眼'
+    else:
+        headline = '家里现在没事'
+
+    state = {
+        'generated_at': now.isoformat(timespec='seconds'),
+        'source': 'HA 注册表 + recorder（只读副本）',
+        'summary': {
+            'platform_devices': platform_devices,   # HA 自身设备，单独记账
+            'total': len(out_devices),
+            'online': sum(1 for d in out_devices if d['confidence'] == 'online'),
+            'offline': sum(1 for d in out_devices if d['confidence'] == 'offline'),
+            'stale': sum(1 for d in out_devices if d['confidence'] == 'stale'),
+            'unknown': sum(1 for d in out_devices if d['confidence'] == 'unknown'),
+            'security_domain': sum(1 for d in out_devices if d['security_domain']),
+            'headline': headline,
+            'attention_count': len(attention),
+            'attention_sec': sec_n,
+        },
+        'rooms': sorted(by_room.values(), key=lambda r: (ROOMS.index(r['name']) if r['name'] in ROOMS else 99)),
+        'attention': attention,
+        'devices': sorted(out_devices, key=lambda d: (ROOMS.index(d['room']) if d['room'] in ROOMS else 99, d['name'])),
+        # 数据来源如实记录：别人问"这份状态哪来的"能回答（也便于迁移后核对）
+        'data_source': {'registries': SOURCE_USED['registries'], 'states': SOURCE_USED['states'],
+                        'mode': STATE_SOURCE},
+    }
+    os.makedirs(DATA, exist_ok=True)
+    out_path = os.environ.get('SMART_HOME_STATE_OUT') or os.path.join(DATA, 'state.json')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False, indent=1)
+
+    # 安全域清单（首次生成种子，之后人工可改；门禁只要求存在且可核对）
+    sec_path = os.path.join(DATA, 'security-domain.json')
+    if not os.path.exists(sec_path):
+        cur = sorted({d['name'] for d in out_devices if d['security_domain']})
+        with open(sec_path, 'w', encoding='utf-8') as f:
+            json.dump({'updated_at': now.isoformat(timespec='seconds'),
+                       'rule': '不可逆 / 涉人身安全 / 涉隐私影像（08 §2）',
+                       'devices': cur}, f, ensure_ascii=False, indent=1)
+    return state
+
+
+def iso(ts):
+    if not ts:
+        return None
+    return datetime.datetime.fromtimestamp(ts, TZ).isoformat(timespec='seconds')
+
+
+if __name__ == '__main__':
+    st = build()
+    s = st['summary']
+    print(f"✅ state.json 已生成：{s['total']} 台 · 在线 {s['online']} · 离线 {s['offline']} · "
+          f"超时 {s['stale']} · 未上报 {s['unknown']} · 安全域 {s['security_domain']}")
+    print(f"   一句话：{s['headline']}（待注意 {s['attention_count']} 项，其中安全 {s['attention_sec']} 项）")
+    for a in st['attention'][:8]:
+        print(f"   [{a['level']}] {a['room']} · {a['device']} —— {a['issue']}（{a['detail']}）")
+    sys.exit(0)

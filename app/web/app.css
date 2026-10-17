@@ -1,0 +1,160 @@
+/* 家庭工作台 · 视觉（依据 docs/spec/02-视觉规范 v1.0：温馨 / 图形优先 / 单屏专注 / 选中高亮） */
+:root{
+  --paper:#FDFBF7; --paper2:#F6EEE3; --surface:#FFFFFF; --ink:#2F2A25; --ink2:#4E463C;
+  --muted:#8A8078; --muted2:#9C9184; --line:#E9E1D6; --rowline:#F3EEE6;
+  --warm:#C0713F; --warmsoft:#FBEDE1; --glow:#F3C877;
+  --alert:#B4453C; --alertsoft:#FBEAE7; --warn:#B98A3E; --warnsoft:#FBF3E3; --ok:#6E8F72;
+  --roomtop:#FFFDF9; --wallx:#F1E5D4; --wally:#EADCC7; --stroke:#E2D5C2;
+  --secroom:#FDF0EC; --secwall:#F6E0DA; --secstroke:#D9887E;
+  --warnroom:#FCF6EA; --warnwall:#F7ECD9; --warnstroke:#DDBE8A;
+  --selfill:#FFEEDA; --selstroke:#B4643A; --iconbg:#FBF7F1; --hover:#FCF8F3;
+  --off:#CFC7BB; --selrow:#F7ECD9;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;color:var(--ink);font-size:14px;line-height:22px;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:radial-gradient(120% 90% at 50% 6%, #FFFDF9 0%, var(--paper) 44%, var(--paper2) 100%);
+  -webkit-font-smoothing:antialiased;
+}
+.num{font-variant-numeric:tabular-nums}
+.page{min-height:100vh;display:flex;flex-direction:column;padding:24px 32px 20px;max-width:1420px;margin:0 auto;
+  padding-left:max(32px, env(safe-area-inset-left));padding-right:max(32px, env(safe-area-inset-right));
+  padding-top:max(24px, env(safe-area-inset-top));padding-bottom:max(20px, env(safe-area-inset-bottom))}
+
+/* 页头 */
+.hd{display:flex;align-items:flex-start;gap:16px}
+.hi{font-size:24px;line-height:32px;font-weight:600;letter-spacing:0.5px}
+.hi small{display:block;font-size:12.5px;font-weight:400;color:var(--muted);margin-top:4px;letter-spacing:0}
+.hd .meta{margin-left:auto;text-align:right;font-size:12.5px;color:var(--muted);line-height:20px}
+.hd .meta b{font-weight:600;color:var(--ink)}
+
+/* 提醒条（最多一条） */
+.remind{display:none;align-items:center;gap:12px;margin:12px auto 0;padding:10px 16px;border-radius:14px;
+  background:var(--alertsoft);border:1px solid var(--secstroke);max-width:720px}
+.remind.on{display:flex}
+.remind .tx{font-size:13px}
+.remind .tx b{font-weight:600}
+.remind .go{margin-left:auto;font-size:12.5px;color:var(--alert);font-weight:600;cursor:pointer;white-space:nowrap}
+
+/* 中央 + 右侧上下文 */
+.wrap{flex:1 1 auto;display:flex;align-items:center;gap:16px;padding:4px 0;min-height:0}
+.stage{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-width:0}
+.stage svg{width:100%;height:auto;max-height:66vh;display:block}
+.room{cursor:pointer}
+.room .top{transition:fill 140ms ease, stroke 140ms ease}
+.room:hover .top{fill:var(--hover)}
+
+/* 选中与高亮：色变 + 加重（至少两个维度，见 02 §「选中与高亮」） */
+.room.sel .top{fill:var(--selfill);stroke:var(--selstroke);stroke-width:2.8}
+.room.sel text{font-weight:700;font-size:16.5px;fill:var(--warm)}
+.room.sel .walls{stroke:var(--selstroke)}
+
+/* 右侧上下文面板 */
+.panel{flex:0 0 336px;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  overflow:hidden;align-self:center;max-height:68vh;display:flex;flex-direction:column}
+.panel.hidden{display:none}
+.ph{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.ph .bk{font-size:12.5px;color:var(--warm);font-weight:600;cursor:pointer}
+.ph .tt{font-size:14px;font-weight:600}
+.ph .ct{margin-left:auto;font-size:11.5px;color:var(--muted)}
+.pb{overflow:auto;padding:6px 8px 10px}
+.di{display:flex;align-items:center;gap:10px;padding:10px;border-radius:12px;cursor:pointer}
+.di:hover{background:var(--hover)}
+.di.sel{background:var(--selrow)}
+.di .ic{width:34px;height:34px;border-radius:11px;background:var(--iconbg);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.di .nm{font-size:13px}
+.di .st{margin-left:auto;text-align:right;font-size:11.5px;color:var(--muted);line-height:18px}
+.di .st b{font-weight:600;color:var(--ink)}
+.di.off .nm{color:var(--muted)}
+
+.dhead{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;border-bottom:1px solid var(--line)}
+.dhead .big{width:56px;height:56px;border-radius:18px;background:var(--iconbg);display:flex;align-items:center;justify-content:center}
+.dhead .nm{font-size:15px;font-weight:600}
+.dhead .st{font-size:12.5px;color:var(--muted)}
+.drow{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--rowline);font-size:12.5px}
+.drow:last-child{border-bottom:0}
+.drow .k{color:var(--muted)}
+.drow .v{margin-left:auto;font-weight:600}
+.spark{padding:8px 16px 0}
+.tip{padding:10px 16px 14px;font-size:11.5px;color:var(--muted);line-height:18px}
+.acts{display:flex;gap:8px;padding:12px 14px 16px}
+.acts button{flex:1;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:12.5px;cursor:pointer}
+.acts button.pri{background:var(--warm);border-color:var(--warm);color:var(--surface);font-weight:600}
+.acts button[disabled]{opacity:0.5;cursor:default}
+
+/* 页脚 */
+.ft{display:flex;align-items:center;gap:14px;padding-top:10px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.ft .sep{width:1px;height:14px;background:var(--line)}
+.ft a{margin-left:auto;color:var(--warm);font-weight:600;cursor:pointer;text-decoration:none}
+
+/* 窄屏：改用等价的房间列表（02 §「必须有一个等价的列表视图」） */
+.mlist{display:none}
+.mlist .mi{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+.mlist .mi .nm{font-size:14px;font-weight:600}
+.mlist .mi .sub{font-size:11.5px;color:var(--muted)}
+.mlist .mi .st{margin-left:auto;text-align:right;font-size:12px;color:var(--muted)}
+.mlist .mi.flag .st{color:var(--alert);font-weight:600}
+.mlist .mi.warnd .st{color:var(--warn);font-weight:600}
+
+@media (max-width:900px){
+  .page{padding:16px 14px 14px}
+  .hi{font-size:20px;line-height:28px}
+  .stage{display:none}
+  .mlist{display:block;padding:4px 0 2px}
+  .wrap{flex-direction:column;align-items:stretch}
+  .panel{flex:1 1 auto;max-height:none;width:100%}
+  .remind{flex-wrap:wrap;max-width:100%}
+  .remind .go{margin-left:0}
+  .ft{flex-wrap:wrap;row-gap:4px}
+  .ft a{margin-left:0;flex-basis:100%}
+}
+
+/* 场景 chips（房间面板底部的兜底入口，02 §8） */
+.sceneRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0 8px}
+.sceneRow .ct{font-size:12px;color:var(--muted)}
+.chip{font-size:13px;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:var(--surface);
+  color:var(--ink2);cursor:pointer;min-height:36px}
+.chip:hover{border-color:var(--warm);color:var(--warm)}
+.chip:disabled{opacity:.6;cursor:default}
+@media (max-width:820px){.chip{min-height:44px;padding:12px 16px}}   /* 触控 ≥44（02 §11） */
+
+/* 功能设置页（03 §1D）：只用色板 token 与标尺值 */
+.ssec{margin:20px 0 8px;font-size:13px;font-weight:600;color:var(--ink2);border-bottom:1px solid var(--rowline);padding-bottom:6px}
+.sgroup{margin:12px 0 4px;font-size:12px;color:var(--muted)}
+.srow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--rowline);font-size:13px}
+.sname{flex:1;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ssrc{font-size:11px;color:var(--muted);white-space:nowrap}
+.sval{font-size:12px;color:var(--ink2)}
+.secmark{margin-left:6px;font-size:10.5px;font-weight:600;color:var(--alert);background:var(--alertsoft);
+  border-radius:4px;padding:1px 4px}
+.sroom{font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink2)}
+.sadd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.sadd input{font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  color:var(--ink2);min-width:180px;flex:1}
+.sadd select{font-size:13px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink2)}
+.panel.wide{flex:1;max-width:none;width:100%}
+.drow .rn{display:block;font-size:10.5px;font-weight:400;color:var(--muted);margin-top:2px}
+.srow.wrap{flex-wrap:wrap}
+.sname.click{cursor:pointer}
+.sname.click:hover{color:var(--warm)}
+.smore{flex-basis:100%;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-top:8px}
+.slab{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted)}
+.slab input[type=text],.sshort{font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface);color:var(--ink2);min-width:150px}
+.stags{display:flex;gap:12px;font-size:13px;color:var(--ink2)}
+.stags label{display:flex;align-items:center;gap:4px}
+.sth{font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink2)}
+.swarn{color:var(--warn)}
+.scard{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0;background:var(--surface)}
+.scard .srow{border-bottom:none;padding:0 0 6px}
+.xdel{cursor:pointer;color:var(--alert);margin-left:6px}
+.szname{font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  color:var(--ink2);width:120px}
+.stalebar{margin:8px 0;padding:8px 12px;border-radius:10px;font-size:13px;
+  background:color-mix(in srgb,var(--warn) 12%,var(--paper));color:var(--warn);border:1px solid var(--line)}
+
+/* 渲染失败/无布局兜底（规范 03 §8：3D 不是唯一视图）：
+   把空间图藏起来，用等价的房间列表顶上 —— 不是降级提示，而是能用的视图。 */
+body.no-3d .stage{display:none}
+body.no-3d .mlist{display:block}
