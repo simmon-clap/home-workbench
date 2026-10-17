@@ -1,4 +1,5 @@
-# 离线检查（不连家庭网络/HA）：语法 + 纯本地测试 + 凭证扫描
+# 离线检查（不连家庭网络/HA，不需要家庭数据）
+# 注意：完整门禁（tools/gate.py）依赖真实的 Home Assistant 与家庭数据，只能在自建机器上跑。
 name: checks
 on:
   push:
@@ -13,13 +14,9 @@ jobs:
           python-version: "3.11"
       - name: 语法编译
         run: python -m compileall -q app tools
-      - name: 纯本地测试（不依赖 HA/家庭数据）
-        run: |
-          set -e
-          for t in tools/test_paths.py tools/test_rules.py tools/test_outbox.py; do
-            python "$t"
-          done
-      - name: 凭证/敏感信息扫描（粗筛）
+      - name: 发布审计（个人标识/凭证/禁止目录）
+        run: python tools/release_audit.py --public-set
+      - name: 凭证粗筛
         run: |
           set -e
           ! grep -rnE 'eyJ[A-Za-z0-9_-]{30,}|PRIVATE KEY|password[[:space:]]*[:=][[:space:]]*["'\''][^"'\'']{4,}' \
